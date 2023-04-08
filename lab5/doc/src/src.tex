@@ -1,0 +1,208 @@
+\section{Описание}
+
+\textbf{Алгоритм Укконена} -это линейно-временной онлайн-алгоритм построения деревьев суффиксов, предложенный Эско Укконеном в 1995 году. Алгоритм начинается с неявного дерева суффиксов, содержащего первый символ строки. Затем он проходит по строке, добавляя последовательные символы до тех пор, пока дерево не будет завершено.
+
+Класс суффиксного дерева, для детерменированности описания состояния, в котором оно нахоодится в лююой момент времени, имеет следующие параметры:\newline
+\textbf{активная точка} представляет тройку (active node, active edge, active len)\newline
+\textbf{remainder} представляет собой количество новых суффиксов, которые нужно вставить\newline
+
+Основные правила, которые используются при добавлении в дерево нового символа:
+\textbf{Правило 1}, после вставки из корня:\newline
+- active node остается корнем\newline
+- active edge становится первым символом нового суффикса, который нужно вставить, т.е. b\newline
+- active len уменьшается на 1\newline
+
+\textbf{Правило 2}\newline
+Если ребро разделяется и вставляется новая вершина, и если это не первая вершина, созданная на текущем шаге, ранее вставленная вершина и новая вершина соединяются через специальный указатель, суффиксную ссылку.\newline
+
+\textbf{Правило 3}\newline
+После разделения ребра из active node, которая не является корнем, переходим по суффиксной ссылке, выходящей из этой вершины, если таковая имеется active node устанавливается вершиной, на которую она указывает. Если суффиксная ссылка отсутствует, active node устанавливается корнем.active edge и active len остаются без изменений.\newline
+
+
+\section{Исходный код}
+
+\begin{lstlisting}[language=C]
+void SuffixTree::build() {
+	to_first_suff = new Node(0, 0, root, true);
+	to_first_suff->n_r = &n_p;
+	to_first_suff->num_of_leaf = 0;
+	last_node = to_first_suff;
+	root->childs.insert(std::make_pair(string[0], to_first_suff));
+	
+	int start_in_new_phase = 1;
+	int case_number = 1;
+	std::pair<Node*, int> res_case3;
+	for (int i = 1; i <= string.size() - 1; i++) {
+		n_p++;
+		do_phase(start_in_new_phase, i, case_number, res_case3);
+	}
+}
+
+void SuffixTree::do_phase(int &start_in_new_phase, int end, int &case_number, std::pair<Node*, int> &res_case3) {
+	bool do_link = false;
+	for (int j = start_in_new_phase; j <= end; j++) {
+		std::pair<Node*, int> pos;
+		if (case_number == 3) {
+			if (res_case3.second != 0) {
+				pos = std::make_pair(res_case3.first, res_case3.second);
+			} else {
+				pos = find_path(end, end, res_case3.first);
+			}
+		} else {
+			pos = analysis_links(j, end);
+		}
+		case_number = analysis(pos, end);
+		
+		if (case_number == 2) {
+			std::pair<Node*, Link> res_of_case = case2(pos, j, end, do_link);
+			last_node = res_of_case.first;
+			if (res_of_case.second == DO_LINK) {
+				do_link = true;
+			} else if (res_of_case.second == DO_LINK_TO_ROOT) {
+				last_node->suff_link = root;
+				do_link = false;
+			} else {
+				do_link = false;
+			}
+			start_in_new_phase++;
+		} else if (case_number == 3) {
+			res_case3 = case3(pos, do_link);
+			last_node = res_case3.first;
+			break;
+		}
+	}
+}
+
+std::pair<Node*, int> SuffixTree::analysis_links(int start, int end) {
+	if (last_node->parent == root || last_node->suff_link == root || last_node == root) {
+		return find_path(start, end, root);
+	} else {
+		if (last_node->suff_link != nullptr) {
+			return find_path(end, end, last_node->suff_link);
+		} else {
+			int d = last_node->len();
+			return find_path(end - d, end, last_node->parent->suff_link);
+		}
+	}
+}
+
+std::pair<Node*, int> SuffixTree::find_path(int start, int end, Node* it) {
+	if (it->childs.count(string[start]) == 1) {
+		int d = it->childs[string[start]]->len() - (end - start);
+		if (d >= 0) {
+			return std::make_pair(it->childs[string[start]], end - start);
+		} else {
+			return find_path(start + it->childs[string[start]]->len(), end,
+			it->childs[string[start]]);
+		}
+	} else {
+		return std::make_pair(it, -1 * (end - start + 1));
+	}
+	
+}
+
+int SuffixTree::analysis(std::pair<Node* , int> &pos, int end) {
+	Node* node = pos.first;
+	int p = pos.second;
+	
+	if (p < 0) {
+		return 2;
+	} else {
+		if (node->len() == p && node->childs.size() > 1) {
+			if (node->childs.count(string[end]) > 0) {
+				pos.first = node->childs[string[end]];
+				pos.second = 0;
+				return 3;
+			}
+			return 2;
+		} else if (node->len() > p) {
+			if (string[node->l + p] == string[end]) {
+				return 3;
+			} else {
+				return 2;
+			}
+		} else {
+			return 3;
+		}
+	}
+}
+
+std::pair<Node*, SuffixTree::Link> SuffixTree::case2(const std::pair<Node*, int> &pos, int start, int end, bool do_link) {
+	auto node = pos.first;
+	auto p = pos.second;
+	
+	if (p >= 0) {
+		if (p != node->len()) {
+			Node* n = new Node(node->l, node->l + p - 1, node->parent, false);
+			n->childs.insert(std::make_pair(string[node->l + p], node));
+			node->parent->childs.erase(string[node->l]);
+			node->parent->childs.insert(std::make_pair(string[n->l], n));
+			node->l += p;
+			node->parent = n;
+			Node* nl = new Node(end, end, n, true);
+			nl->n_r = &n_p;
+			nl->num_of_leaf = start;
+			n->childs.insert(std::make_pair(string[end], nl));
+			
+			if (do_link) {
+				last_node->suff_link = n;
+			}
+			if (n->len() > 1) {
+				return std::make_pair(n, DO_LINK);
+			} else {
+				if (n->parent != root) {
+					return std::make_pair(n, DO_LINK);
+				}
+				return std::make_pair(n, DO_LINK_TO_ROOT);
+			}
+		} else {
+			Node* nl = new Node(end, end, node, true);
+			nl->n_r = &n_p;
+			nl->num_of_leaf = start;
+			nl->parent->childs.insert(std::make_pair(string[end], nl));
+			
+			if (do_link) {
+				last_node->suff_link = nl->parent;
+			}
+			return std::make_pair(nl->parent, DONT_LINK); 
+		}
+	} else {
+		p *= -1;
+		Node* n = new Node(end - p + 1, end, node, true);
+		n->n_r = &n_p;
+		n->num_of_leaf = start;
+		n->parent->childs.insert(std::make_pair(string[end - p + 1], n));
+		if (do_link) {
+			last_node->suff_link = n->parent;
+		}
+		return std::make_pair(n->parent, DONT_LINK);
+	}
+}
+
+std::pair<Node*, int> SuffixTree::case3(const std::pair<Node*, int> &pos, bool do_link) {
+	if (do_link) {
+		last_node->suff_link = pos.first->parent;
+	}
+	auto node = pos.first;
+	auto p = pos.second;
+	int case3_new_j;
+	if (node->l + p == node->end()) {
+		case3_new_j = 0;
+	} else {
+		case3_new_j = p + 1;
+	}
+	return std::make_pair(node, case3_new_j);
+}
+\end{lstlisting}
+
+\pagebreak
+
+\section{Консоль}
+\begin{alltt}
+den@vbox:~/Документы/DA/lab5$ ./a.out
+xabcd
+abcdx
+den@vbox:~/Документы/DA/lab5$ ./a.out
+abxabc
+abcabx
+\end{alltt}
